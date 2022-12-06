@@ -1,5 +1,17 @@
+"""
+Trans Rights are Human Rights
+
+This code gets flashed onto the Raspberry pi Pico, and is responsible for showing images on an
+attached led matrix panel (Currently this is a 16x7 Unicorn HAT)
+"""
+# SYSTEM IMPORTS
 import picounicorn
 import time
+
+# STANDARD LIBRARY IMPORTS
+
+# LOCAL APPLICATION IMPORTS
+
 
 picounicorn.init()
 
@@ -35,21 +47,20 @@ anim_timings = [
 ]
 
 
-def run_animation():
-    for frame, wait_time in anim_timings:
-        for x in range(w):
-            for y in range(h):
-                r, g, b, _ = frame[y][x]
-                picounicorn.set_pixel(x, y, r, g, b)
-        time.sleep(wait_time*FRAME_RATE_IN_MS)
-
 def show_array(frame):
     for x in range(w):
         for y in range(h):
             r, g, b, _ = frame[y][x]
             picounicorn.set_pixel(x, y, r, g, b)
 
-def show_mouth_shape(shape=""):
+
+def run_animation(anim_set: list):
+    for frame, wait_time in anim_set:
+        show_array(frame=frame)
+        time.sleep(wait_time*FRAME_RATE_IN_MS)
+
+
+def show_image(shape=""):
     if shape == "closed":
         show_array(frame=mouth_closed)
     elif shape == "open":
@@ -57,8 +68,7 @@ def show_mouth_shape(shape=""):
     elif shape == "open_wide":
         show_array(frame=mouth_open_wide)
 
-# while True:
-#     run_animation()
+
 #############################################
 """
 Example for remote control from host via Serial link.

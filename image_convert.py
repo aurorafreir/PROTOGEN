@@ -1,5 +1,14 @@
+"""
+Trans Rights are Human Rights
+
+"""
+# SYSTEM IMPORTS
 from PIL import Image
 import pathlib
+
+# STANDARD LIBRARY IMPORTS
+
+# LOCAL APPLICATION IMPORTS
 
 
 def get_pixels(image_name):

@@ -1,4 +1,13 @@
+"""
+Trans Rights are Human Rights
+
+"""
+# SYSTEM IMPORTS
 import serial
+
+# STANDARD LIBRARY IMPORTS
+
+# LOCAL APPLICATION IMPORTS
 
 
 class Talker:
