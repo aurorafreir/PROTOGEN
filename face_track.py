@@ -8,12 +8,12 @@ import mediapipe as mp
 import pprint
 import time
 import math
+import serial
 
 # STANDARD LIBRARY IMPORTS
 
 # LOCAL APPLICATION IMPORTS
 import talker
-
 
 RIGHT_IRIS_INNER = 476
 RIGHT_IRIS_OUTER = 474
@@ -22,7 +22,7 @@ RIGHT_IRIS_BOTTOM = 477
 RIGHT_EYE_INNER = 362
 RIGHT_EYE_OUTER = 263
 RIGHT_EYE_TOP = 386
-RIGHT_EYE_BOTTOM = 373
+RIGHT_EYE_BOTTOM = 374
 
 RIGHT_EYEBROW_INNER = 107
 RIGHT_EYEBROW_MID = 105
@@ -31,10 +31,10 @@ LEFT_IRIS_INNER = 469
 LEFT_IRIS_OUTER = 471
 LEFT_IRIS_TOP = 470
 LEFT_IRIS_BOTTOM = 472
-LEFT_EYE_INNER = 243
-LEFT_EYE_OUTER = 33
-LEFT_EYE_TOP = 27
-LEFT_EYE_BOTTOM = 23
+LEFT_EYE_INNER = 133
+LEFT_EYE_OUTER = 130
+LEFT_EYE_TOP = 159
+LEFT_EYE_BOTTOM = 145
 
 LEFT_EYEBROW_INNER = 336
 LEFT_EYEBROW_MID = 334
@@ -46,9 +46,13 @@ MOUTH_MIDDLE_BOTTOM = 14
 MOUTH_LEFT = 61
 MOUTH_RIGHT = 291
 
-
-talker_inst = talker.Talker()
-
+# talker.Talker() will error out if a COM device isn't attached, this just bypasses it if need be.
+use_talker = True
+talker_inst = None
+try:
+    talker_inst = talker.Talker()
+except:
+    use_talker = False
 
 mp_drawing = mp.solutions.drawing_utils
 mp_drawing_styles = mp.solutions.drawing_styles
@@ -67,6 +71,7 @@ def timeit(method):
         else:
             print('%r  %2.2f ms' % (method.__name__, (te - ts) * 1000))  # ew, need to rewrite this print
         return result
+
     return timed
 
 
@@ -83,10 +88,14 @@ def clamp_float(val: float, min_val: float, max_val: float):
     return max(min(val, max_val), min_val)
 
 
+zero_one_clamp = {"min_val": 0, "max_val": 1}
+ZERO_ONE_REMAP_KWARGS = {"new_min": 0, "new_max": 1}
+
+EYE_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 20}
+EYEBROW_INNER_REMAP_KWARGS = {"old_min": 15, "old_max": 17.5}
+
 # @timeit
 def pose_handler(lm: dict):
-    eye_map_val_kwargs = {"old_min": 0, "old_max": 20, "new_min": 0, "new_max": 1}
-    zero_one_clamp = {"min_val": 0, "max_val": 1}
 
     debug_print_data = []
 
@@ -97,55 +106,88 @@ def pose_handler(lm: dict):
         return open_normalized
 
     left_eye_open_amount_mapped = clamp_float(remap_value(
-        distance_with_normalize(lm[LEFT_EYE_BOTTOM], lm[LEFT_EYE_TOP],
-                                lm[LEFT_EYE_INNER], lm[LEFT_EYE_OUTER]),
-        **eye_map_val_kwargs
+        distance_with_normalize(lm[LEFT_EYE_TOP], lm[LEFT_EYE_BOTTOM],
+                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        **EYE_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
     ), **zero_one_clamp)
-    debug_print_data.append(["left eye open amount:             ", left_eye_open_amount_mapped])
 
     right_eye_open_amount_mapped = clamp_float(remap_value(
-        distance_with_normalize(lm[RIGHT_EYE_BOTTOM], lm[RIGHT_EYE_TOP],
-                                lm[RIGHT_EYE_INNER], lm[RIGHT_EYE_OUTER]),
-        **eye_map_val_kwargs
+        distance_with_normalize(lm[RIGHT_EYE_TOP], lm[RIGHT_EYE_BOTTOM],
+                                lm[RIGHT_EYE_INNER], lm[LEFT_EYE_OUTER]),
+        **EYE_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
     ), **zero_one_clamp)
-    debug_print_data.append(["right eye open amount:            ", right_eye_open_amount_mapped])
 
     mouth_open_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[MOUTH_MIDDLE_TOP], lm[MOUTH_MIDDLE_BOTTOM],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        0, 11, 0, 1
+        0, 11, **ZERO_ONE_REMAP_KWARGS
     ), **zero_one_clamp)
-    debug_print_data.append(["mouth open amount:                ", mouth_open_amount_mapped])
 
     right_eyebrow_inner_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[RIGHT_EYEBROW_INNER], lm[EYE_CENTRE_ON_NOSE],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        15, 17, 0, 1
+        15, 17.5, **ZERO_ONE_REMAP_KWARGS
     ), **zero_one_clamp)
-    debug_print_data.append(["right eyebrow inner open amount:  ", right_eyebrow_inner_amount_mapped])
 
     right_eyebrow_mid_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[RIGHT_EYEBROW_MID], lm[EYE_CENTRE_ON_NOSE],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        44, 47, 0, 1
+        44, 48, **ZERO_ONE_REMAP_KWARGS
     ), **zero_one_clamp)
-    debug_print_data.append(["right eyebrow mid open amount:    ", right_eyebrow_mid_amount_mapped])
 
-    pprint.pprint(debug_print_data)
-    # print("##################################")
+    left_eyebrow_inner_amount_mapped = clamp_float(remap_value(
+        distance_with_normalize(lm[LEFT_EYEBROW_INNER], lm[EYE_CENTRE_ON_NOSE],
+                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        15.5, 16.5, **ZERO_ONE_REMAP_KWARGS
+    ), **zero_one_clamp)
 
-    return mouth_open_amount_mapped
+    left_eyebrow_mid_amount_mapped = clamp_float(remap_value(
+        distance_with_normalize(lm[LEFT_EYEBROW_MID], lm[EYE_CENTRE_ON_NOSE],
+                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        44, 48, **ZERO_ONE_REMAP_KWARGS
+    ), **zero_one_clamp)
+
+    # print(f"{left_eye_open_amount_mapped:.2f}  ",
+    #       f"{left_eyebrow_inner_amount_mapped:.2f}  ",
+    #       f"{mouth_open_amount_mapped:.2f} ",
+    #       end="\r")
+
+    # print(f"{lm[LEFT_EYE_TOP]}:.2f", f"{lm[LEFT_EYE_BOTTOM]}:.2f", end="\r")
+    print("left eyebrow inner up:   ", f"{right_eyebrow_inner_amount_mapped:.2f}", end="\r")
+
+    return_data = {
+        "mouth": {
+            "open_amount": mouth_open_amount_mapped
+        },
+        "eye_left": {
+            "open_amount": left_eye_open_amount_mapped
+        },
+        "eye_right": {
+            "open_amount": right_eye_open_amount_mapped
+        },
+        "eyebrow_left": {
+            "mid_raise": left_eyebrow_mid_amount_mapped,
+            "inner_raise": left_eyebrow_inner_amount_mapped
+        },
+        "eyebrow_right": {
+            "mid_raise": right_eyebrow_mid_amount_mapped,
+            "inner_raise": right_eyebrow_inner_amount_mapped
+        }
+    }
+
+    return return_data
 
 
-# For webcam input:
-drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
-cap = cv2.VideoCapture(0)
-facemesh_kwargs = {"max_num_faces": 1,
+FACEMESH_KWARGS = {"max_num_faces": 1,
                    "refine_landmarks": True,
                    "min_detection_confidence": 0.5,
                    "min_tracking_confidence": 0.5
                    }
-with mp_face_mesh.FaceMesh(**facemesh_kwargs) as face_mesh:
+show_image = False
+# For webcam input:
+drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+cap = cv2.VideoCapture(0)
+with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
     while cap.isOpened():
         success, image = cap.read()
         if not success:
@@ -160,13 +202,12 @@ with mp_face_mesh.FaceMesh(**facemesh_kwargs) as face_mesh:
         results = face_mesh.process(image)
 
         # Draw the face mesh annotations on the image.
-        image.flags.writeable = True
+        image.flags.writeable = False
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
         image_height, image_width, _ = image.shape
 
         if results.multi_face_landmarks:
             landmarks = {}
-            # print(results.multi_face_landmarks)
             for index, face_landmarks in enumerate(results.multi_face_landmarks[0].landmark):
                 x_coordinate = face_landmarks.x
                 y_coordinate = face_landmarks.y
@@ -174,39 +215,50 @@ with mp_face_mesh.FaceMesh(**facemesh_kwargs) as face_mesh:
                 current_landmarks = [x_coordinate, y_coordinate, z_coordinate]
                 landmarks[index] = current_landmarks
 
-            mouth_open_amount = pose_handler(landmarks)
+            # Pass the modified landmarks dict into the posehandler, return the facial poses
+            pose_dict = pose_handler(landmarks)
 
-            if mouth_open_amount > .7:
-                talker_inst.send('show_image(shape="open_wide")')
-            elif mouth_open_amount < .3:
-                talker_inst.send('show_image(shape="closed")')
-            else:
-                talker_inst.send('show_image(shape="open")')
+            # This should only be run if a COM device is attached and Talker can be run
+            if use_talker:
+                if pose_dict["mouth"]["open_amount"] > .7:
+                    talker_inst.send('show_image(shape="open_wide")')
+                elif pose_dict["mouth"]["open_amount"] < .3:
+                    talker_inst.send('show_image(shape="closed")')
+                else:
+                    talker_inst.send('show_image(shape="open")')
 
-            for face_landmarks in results.multi_face_landmarks:
-                mp_drawing.draw_landmarks(
-                    image=image,
-                    landmark_list=face_landmarks,
-                    connections=mp_face_mesh.FACEMESH_TESSELATION,
-                    landmark_drawing_spec=None,
-                    connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
-                mp_drawing.draw_landmarks(
-                    image=image,
-                    landmark_list=face_landmarks,
-                    connections=mp_face_mesh.FACEMESH_CONTOURS,
-                    landmark_drawing_spec=None,
-                    connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style())
-                mp_drawing.draw_landmarks(
-                    image=image,
-                    landmark_list=face_landmarks,
-                    connections=mp_face_mesh.FACEMESH_IRISES,
-                    landmark_drawing_spec=None,
-                    connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
+                # if pose_dict["eyebrow_right"]["inner_raise"] > .8:
+                #     talker_inst.send('show_image(shape="open_wide")')
+                # elif pose_dict["eyebrow_right"]["inner_raise"] < .2:
+                #     talker_inst.send('show_image(shape="closed")')
+                # else:
+                #     talker_inst.send('show_image(shape="open")')
+            if show_image:
+                for face_landmarks in results.multi_face_landmarks:
+                    mp_drawing.draw_landmarks(
+                        image=image,
+                        landmark_list=face_landmarks,
+                        connections=mp_face_mesh.FACEMESH_TESSELATION,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
+                    mp_drawing.draw_landmarks(
+                        image=image,
+                        landmark_list=face_landmarks,
+                        connections=mp_face_mesh.FACEMESH_CONTOURS,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style())
+                    mp_drawing.draw_landmarks(
+                        image=image,
+                        landmark_list=face_landmarks,
+                        connections=mp_face_mesh.FACEMESH_IRISES,
+                        landmark_drawing_spec=None,
+                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
 
-        time.sleep(.1)
+        # time.sleep(.1)
         # Flip the image horizontally for a selfie-view display.
-        cv2.imshow('MediaPipe Face Mesh', cv2.flip(image, 1))
-        if cv2.waitKey(5) & 0xFF == 27:
-            break
+        if show_image:
+            cv2.imshow('MediaPipe Face Mesh', cv2.flip(image, 1))
+            if cv2.waitKey(5) & 0xFF == 27:
+                break
 
 cap.release()
