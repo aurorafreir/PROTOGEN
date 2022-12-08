@@ -153,7 +153,7 @@ def pose_handler(lm: dict):
     #       end="\r")
 
     # print(f"{lm[LEFT_EYE_TOP]}:.2f", f"{lm[LEFT_EYE_BOTTOM]}:.2f", end="\r")
-    print("left eyebrow inner up:   ", f"{right_eyebrow_inner_amount_mapped:.2f}", end="\r")
+    print("Mouth Open Mapped and Clamped:   ", f"{mouth_open_amount_mapped:.2f}", end="\r")
 
     return_data = {
         "mouth": {
