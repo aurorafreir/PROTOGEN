@@ -5,10 +5,9 @@ Trans Rights are Human Rights
 # SYSTEM IMPORTS
 import cv2
 import mediapipe as mp
-import pprint
+from mediapipe.python.solutions.drawing_utils import _normalized_to_pixel_coordinates as denormalize_coordinates
 import time
 import math
-import serial
 
 # STANDARD LIBRARY IMPORTS
 
@@ -19,6 +18,7 @@ RIGHT_IRIS_INNER = 476
 RIGHT_IRIS_OUTER = 474
 RIGHT_IRIS_TOP = 475
 RIGHT_IRIS_BOTTOM = 477
+RIGHT_IRIS_CENTRE = 473
 RIGHT_EYE_INNER = 362
 RIGHT_EYE_OUTER = 263
 RIGHT_EYE_TOP = 386
@@ -31,6 +31,7 @@ LEFT_IRIS_INNER = 469
 LEFT_IRIS_OUTER = 471
 LEFT_IRIS_TOP = 470
 LEFT_IRIS_BOTTOM = 472
+LEFT_IRIS_CENTRE = 468
 LEFT_EYE_INNER = 133
 LEFT_EYE_OUTER = 130
 LEFT_EYE_TOP = 159
@@ -45,6 +46,9 @@ MOUTH_MIDDLE_TOP = 13
 MOUTH_MIDDLE_BOTTOM = 14
 MOUTH_LEFT = 61
 MOUTH_RIGHT = 291
+
+LEFT_EYE_IDXS = [362, 385, 387, 263, 373, 380]
+RIGHT_EYE_IDXS = [33, 160, 158, 133, 153, 144]
 
 # talker.Talker() will error out if a COM device isn't attached, this just bypasses it if need be.
 use_talker = True
@@ -75,29 +79,51 @@ def timeit(method):
     return timed
 
 
+def distance(xy1, xy2):
+    dist = sum([(x - y) ** 2 for x, y in zip(xy1, xy2)]) ** 0.5
+    return dist
+
+
+def get_eye_ear_equation(lm: dict, reference_idxs: list, frame_width, frame_height) -> [float, list]:
+    coordinate_points = []
+    for idx in reference_idxs:
+        coord = denormalize_coordinates(lm[idx][0], lm[idx][1], frame_width, frame_height)
+        coordinate_points.append(coord)
+
+    p2_p6 = distance(coordinate_points[1], coordinate_points[5])
+    p3_p5 = distance(coordinate_points[2], coordinate_points[4])
+    p1_p4 = distance(coordinate_points[0], coordinate_points[3])
+
+    ear = (p2_p6 + p3_p5) / (2.0 * p1_p4)
+
+    return ear
+
+
 def distance_between(xyz_a: [int, int, int], xyz_b: [int, int, int]) -> float:
-    distance = math.sqrt((xyz_b[0] - xyz_a[0]) ** 2 + (xyz_b[1] - xyz_b[1]) ** 2 + (xyz_b[2] - xyz_a[2]) ** 2)
-    return distance
+    dist = math.sqrt((xyz_b[0] - xyz_a[0]) ** 2 + (xyz_b[1] - xyz_b[1]) ** 2 + (xyz_b[2] - xyz_a[2]) ** 2)
+    return dist
 
 
 def remap_value(val: float, old_min: float, old_max: float, new_min: float, new_max: float):
     return (((val - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
 
 
-def clamp_float(val: float, min_val: float, max_val: float):
+def clamp_float(val: float, min_val: float, max_val: float) -> object:
     return max(min(val, max_val), min_val)
 
 
-zero_one_clamp = {"min_val": 0, "max_val": 1}
+ZERO_ONE_CLAMP = {"min_val": 0, "max_val": 1}
 ZERO_ONE_REMAP_KWARGS = {"new_min": 0, "new_max": 1}
 
-EYE_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 20}
+EYE_OPEN_REMAP_KWARGS = {"old_min": .07, "old_max": .30}
 EYEBROW_INNER_REMAP_KWARGS = {"old_min": 15, "old_max": 17.5}
+EYEBROW_MID_REMAP_KWARGS = {"old_min": 44, "old_max": 48}
+EYE_IRIS_DISTANCE_REMAP_KWARGS = {"old_min": 33, "old_max": 44}
+MOUTH_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 11}
+
 
 # @timeit
-def pose_handler(lm: dict):
-
-    debug_print_data = []
+def pose_handler(lm: dict, frame_width: int, frame_height: int):
 
     def distance_with_normalize(xyz_a, xyz_b, norm_a, norm_b):
         world_open_amount = distance_between(xyz_a, xyz_b)
@@ -106,64 +132,70 @@ def pose_handler(lm: dict):
         return open_normalized
 
     left_eye_open_amount_mapped = clamp_float(remap_value(
-        distance_with_normalize(lm[LEFT_EYE_TOP], lm[LEFT_EYE_BOTTOM],
-                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        get_eye_ear_equation(landmarks, LEFT_EYE_IDXS, frame_width=frame_width, frame_height=frame_height),
         **EYE_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+     ), **ZERO_ONE_CLAMP)
 
     right_eye_open_amount_mapped = clamp_float(remap_value(
-        distance_with_normalize(lm[RIGHT_EYE_TOP], lm[RIGHT_EYE_BOTTOM],
-                                lm[RIGHT_EYE_INNER], lm[LEFT_EYE_OUTER]),
+        get_eye_ear_equation(landmarks, RIGHT_EYE_IDXS, frame_width=frame_width, frame_height=frame_height),
         **EYE_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+    ), **ZERO_ONE_CLAMP)
 
     mouth_open_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[MOUTH_MIDDLE_TOP], lm[MOUTH_MIDDLE_BOTTOM],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        0, 11, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+        **MOUTH_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
 
     right_eyebrow_inner_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[RIGHT_EYEBROW_INNER], lm[EYE_CENTRE_ON_NOSE],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        15, 17.5, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+        **EYEBROW_INNER_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
 
     right_eyebrow_mid_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[RIGHT_EYEBROW_MID], lm[EYE_CENTRE_ON_NOSE],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        44, 48, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+        **EYEBROW_MID_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
+
+    right_eye_iris_dist_from_nose_centre = clamp_float(remap_value(
+        distance_with_normalize(lm[RIGHT_IRIS_CENTRE], lm[EYE_CENTRE_ON_NOSE],
+                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        **EYE_IRIS_DISTANCE_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
 
     left_eyebrow_inner_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[LEFT_EYEBROW_INNER], lm[EYE_CENTRE_ON_NOSE],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        15.5, 16.5, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+        **EYEBROW_INNER_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
 
     left_eyebrow_mid_amount_mapped = clamp_float(remap_value(
         distance_with_normalize(lm[LEFT_EYEBROW_MID], lm[EYE_CENTRE_ON_NOSE],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
-        44, 48, **ZERO_ONE_REMAP_KWARGS
-    ), **zero_one_clamp)
+        **EYEBROW_MID_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
 
-    # print(f"{left_eye_open_amount_mapped:.2f}  ",
-    #       f"{left_eyebrow_inner_amount_mapped:.2f}  ",
-    #       f"{mouth_open_amount_mapped:.2f} ",
-    #       end="\r")
+    left_eye_iris_dist_from_nose_centre = clamp_float(remap_value(
+        distance_with_normalize(lm[LEFT_IRIS_CENTRE], lm[EYE_CENTRE_ON_NOSE],
+                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        **EYE_IRIS_DISTANCE_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
 
-    # print(f"{lm[LEFT_EYE_TOP]}:.2f", f"{lm[LEFT_EYE_BOTTOM]}:.2f", end="\r")
-    print("Mouth Open Mapped and Clamped:   ", f"{mouth_open_amount_mapped:.2f}", end="\r")
+    print("left_eye_open Mapped and Clamped:   ", f"{left_eye_open_amount_mapped:.2f}", end="\r")
 
     return_data = {
         "mouth": {
             "open_amount": mouth_open_amount_mapped
         },
         "eye_left": {
-            "open_amount": left_eye_open_amount_mapped
+            "open_amount": left_eye_open_amount_mapped,
+            "iris_distance": left_eye_iris_dist_from_nose_centre
         },
         "eye_right": {
-            "open_amount": right_eye_open_amount_mapped
+            "open_amount": right_eye_open_amount_mapped,
+            "iris_distance": right_eye_iris_dist_from_nose_centre
         },
         "eyebrow_left": {
             "mid_raise": left_eyebrow_mid_amount_mapped,
@@ -183,7 +215,7 @@ FACEMESH_KWARGS = {"max_num_faces": 1,
                    "min_detection_confidence": 0.5,
                    "min_tracking_confidence": 0.5
                    }
-show_image = False
+show_image = True
 # For webcam input:
 drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 cap = cv2.VideoCapture(0)
@@ -216,23 +248,15 @@ with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
                 landmarks[index] = current_landmarks
 
             # Pass the modified landmarks dict into the posehandler, return the facial poses
-            pose_dict = pose_handler(landmarks)
+            pose_dict = pose_handler(landmarks, frame_width=image_width, frame_height=image_height)
 
             # This should only be run if a COM device is attached and Talker can be run
             if use_talker:
-                if pose_dict["mouth"]["open_amount"] > .7:
-                    talker_inst.send('show_image(shape="open_wide")')
-                elif pose_dict["mouth"]["open_amount"] < .3:
-                    talker_inst.send('show_image(shape="closed")')
+                if pose_dict["eye_left"]["open_amount"] > .5:
+                    talker_inst.send('show_image(shape="eye_static")')
                 else:
-                    talker_inst.send('show_image(shape="open")')
+                    talker_inst.send('show_image(shape="eye_blink")')
 
-                # if pose_dict["eyebrow_right"]["inner_raise"] > .8:
-                #     talker_inst.send('show_image(shape="open_wide")')
-                # elif pose_dict["eyebrow_right"]["inner_raise"] < .2:
-                #     talker_inst.send('show_image(shape="closed")')
-                # else:
-                #     talker_inst.send('show_image(shape="open")')
             if show_image:
                 for face_landmarks in results.multi_face_landmarks:
                     mp_drawing.draw_landmarks(
