@@ -183,7 +183,11 @@ def pose_handler(lm: dict, frame_width: int, frame_height: int):
         **EYE_IRIS_DISTANCE_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
     ), **ZERO_ONE_CLAMP)
 
-    print("left_eye_open Mapped and Clamped:   ", f"{left_eye_open_amount_mapped:.2f}", end="\r")
+    print("l_eye:", f"{left_eye_open_amount_mapped:.2f}", "r_eye:", f"{right_eye_open_amount_mapped:.2f}",
+          "mouth:", f"{mouth_open_amount_mapped:.2f}",
+          "l_brow:", f"{left_eyebrow_inner_amount_mapped:.2f}", "r_brow:", f"{right_eyebrow_inner_amount_mapped:.2f}",
+          "l_iris:", f"{left_eye_iris_dist_from_nose_centre:.2f}", "r_iris:", f"{right_eye_iris_dist_from_nose_centre:.2f}",
+          end="\r")
 
     return_data = {
         "mouth": {
@@ -278,7 +282,6 @@ with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
                         landmark_drawing_spec=None,
                         connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
 
-        # time.sleep(.1)
         # Flip the image horizontally for a selfie-view display.
         if show_image:
             cv2.imshow('MediaPipe Face Mesh', cv2.flip(image, 1))
