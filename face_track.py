@@ -8,6 +8,8 @@ import mediapipe as mp
 from mediapipe.python.solutions.drawing_utils import _normalized_to_pixel_coordinates as denormalize_coordinates
 import time
 import math
+import numpy
+import serial
 
 # STANDARD LIBRARY IMPORTS
 
@@ -55,7 +57,7 @@ use_talker = True
 talker_inst = None
 try:
     talker_inst = talker.Talker()
-except:
+except serial.SerialException:
     use_talker = False
 
 mp_drawing = mp.solutions.drawing_utils
@@ -118,8 +120,9 @@ ZERO_ONE_REMAP_KWARGS = {"new_min": 0, "new_max": 1}
 EYE_OPEN_REMAP_KWARGS = {"old_min": .07, "old_max": .30}
 EYEBROW_INNER_REMAP_KWARGS = {"old_min": 15, "old_max": 17.5}
 EYEBROW_MID_REMAP_KWARGS = {"old_min": 44, "old_max": 48}
-EYE_IRIS_DISTANCE_REMAP_KWARGS = {"old_min": 33, "old_max": 44}
+EYE_IRIS_DISTANCE_REMAP_KWARGS = {"old_min": 35, "old_max": 48}
 MOUTH_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 11}
+MOUTH_WIDE_REMAP_KWARGS = {"old_min": 33, "old_max": 75}
 
 
 # @timeit
@@ -145,6 +148,12 @@ def pose_handler(lm: dict, frame_width: int, frame_height: int):
         distance_with_normalize(lm[MOUTH_MIDDLE_TOP], lm[MOUTH_MIDDLE_BOTTOM],
                                 lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
         **MOUTH_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
+    ), **ZERO_ONE_CLAMP)
+
+    mouth_wide_amount_mapped = clamp_float(remap_value(
+        distance_with_normalize(lm[MOUTH_LEFT], lm[MOUTH_RIGHT],
+                                lm[RIGHT_EYE_OUTER], lm[LEFT_EYE_OUTER]),
+        **MOUTH_WIDE_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
     ), **ZERO_ONE_CLAMP)
 
     right_eyebrow_inner_amount_mapped = clamp_float(remap_value(
@@ -183,10 +192,14 @@ def pose_handler(lm: dict, frame_width: int, frame_height: int):
         **EYE_IRIS_DISTANCE_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
     ), **ZERO_ONE_CLAMP)
 
-    print("l_eye:", f"{left_eye_open_amount_mapped:.2f}", "r_eye:", f"{right_eye_open_amount_mapped:.2f}",
+    print("l_eye:", f"{left_eye_open_amount_mapped:.2f}",
+          "r_eye:", f"{right_eye_open_amount_mapped:.2f}",
           "mouth:", f"{mouth_open_amount_mapped:.2f}",
-          "l_brow:", f"{left_eyebrow_inner_amount_mapped:.2f}", "r_brow:", f"{right_eyebrow_inner_amount_mapped:.2f}",
-          "l_iris:", f"{left_eye_iris_dist_from_nose_centre:.2f}", "r_iris:", f"{right_eye_iris_dist_from_nose_centre:.2f}",
+          "mouth_wide", f"{mouth_wide_amount_mapped:.2f}",
+          "l_brow:", f"{left_eyebrow_inner_amount_mapped:.2f}",
+          "r_brow:", f"{right_eyebrow_inner_amount_mapped:.2f}",
+          "l_iris:", f"{left_eye_iris_dist_from_nose_centre:.2f}",
+          "r_iris:", f"{right_eye_iris_dist_from_nose_centre:.2f}",
           end="\r")
 
     return_data = {
@@ -220,9 +233,14 @@ FACEMESH_KWARGS = {"max_num_faces": 1,
                    "min_tracking_confidence": 0.5
                    }
 show_image = True
-# For webcam input:
 drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
 cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+
+if not cap.isOpened():
+    raise Exception("Unable to read camera feed!!")
+
 with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
     while cap.isOpened():
         success, image = cap.read()
@@ -261,22 +279,23 @@ with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
                 else:
                     talker_inst.send('show_image(shape="eye_blink")')
 
+            img = numpy.zeros((image_height, image_width, 3), numpy.uint8)
             if show_image:
                 for face_landmarks in results.multi_face_landmarks:
                     mp_drawing.draw_landmarks(
-                        image=image,
+                        image=img,
                         landmark_list=face_landmarks,
                         connections=mp_face_mesh.FACEMESH_TESSELATION,
                         landmark_drawing_spec=None,
                         connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
                     mp_drawing.draw_landmarks(
-                        image=image,
+                        image=img,
                         landmark_list=face_landmarks,
                         connections=mp_face_mesh.FACEMESH_CONTOURS,
                         landmark_drawing_spec=None,
                         connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style())
                     mp_drawing.draw_landmarks(
-                        image=image,
+                        image=img,
                         landmark_list=face_landmarks,
                         connections=mp_face_mesh.FACEMESH_IRISES,
                         landmark_drawing_spec=None,
