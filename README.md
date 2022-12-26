@@ -19,7 +19,7 @@ The end goal is to create my own Protogen mask for 3d printing, wire up a Raspi
 # Installing and Running
 To get this whole project, run these terminal commands
 ```
-pip install opencv-python mediapipe PIL serial time math 
+pip install opencv-python mediapipe Pillow serial numpy 
 git clone https://github.com/CatAndDogSoup/PROTOGEN.git
 cd PROTOGEN
 python face_track.py
