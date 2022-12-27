@@ -85,7 +85,7 @@ def timeit(method):
     return timed
 
 
-def distance(xy1, xy2):
+def distance(xy1, xy2) -> float:
     dist = sum([(x - y) ** 2 for x, y in zip(xy1, xy2)]) ** 0.5
     return dist
 
@@ -110,7 +110,7 @@ def distance_between(xyz_a: [int, int, int], xyz_b: [int, int, int]) -> float:
     return dist
 
 
-def remap_value(val: float, old_min: float, old_max: float, new_min: float, new_max: float):
+def remap_value(val: float, old_min: float, old_max: float, new_min: float, new_max: float) -> float:
     return (((val - old_min) * (new_max - new_min)) / (old_max - old_min)) + new_min
 
 
@@ -130,7 +130,7 @@ MOUTH_WIDE_REMAP_KWARGS = {"old_min": 33, "old_max": 75}
 
 
 # @timeit
-def pose_handler(lm: dict, frame_width: int, frame_height: int):
+def pose_handler(lm: dict, frame_width: int, frame_height: int) -> dict:
 
     def distance_with_normalize(xyz_a, xyz_b, norm_a, norm_b):
         world_open_amount = distance_between(xyz_a, xyz_b)
