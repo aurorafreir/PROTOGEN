@@ -1,6 +1,8 @@
 """
 Trans Rights are Human Rights
 
+This is a script to handle reading a webcam, running MediaPipe FaceMesh, and doing some basic facial pose estimation
+    on that returned FaceMesh data.
 """
 # SYSTEM IMPORTS
 import cv2
@@ -14,7 +16,7 @@ import serial
 # STANDARD LIBRARY IMPORTS
 
 # LOCAL APPLICATION IMPORTS
-import talker
+from . import talker
 
 RIGHT_IRIS_INNER = 476
 RIGHT_IRIS_OUTER = 474
@@ -49,6 +51,7 @@ MOUTH_MIDDLE_BOTTOM = 14
 MOUTH_LEFT = 61
 MOUTH_RIGHT = 291
 
+# The eye open/close data uses a different equation, so the IDXs are supplied in a list format.
 LEFT_EYE_IDXS = [362, 385, 387, 263, 373, 380]
 RIGHT_EYE_IDXS = [33, 160, 158, 133, 153, 144]
 
