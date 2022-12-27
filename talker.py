@@ -1,6 +1,7 @@
 """
 Trans Rights are Human Rights
 
+Short script to handle serial data over USB
 """
 # SYSTEM IMPORTS
 import serial
@@ -13,10 +14,10 @@ import serial
 class Talker:
     TERMINATOR = '\r'.encode('UTF8')
 
-    def __init__(self, timeout=1):
-        self.serial = serial.Serial('COM6', 115200, timeout=timeout)
+    def __init__(self, com_port: str = "COM6", timeout=1):
+        self.serial = serial.Serial(com_port, 115200, timeout=timeout)
 
-    def send(self, text: str):
+    def send(self, text: str) -> None:
         line = '%s\r\f' % text
         self.serial.write(line.encode('utf-8'))
         reply = self.receive()
@@ -24,9 +25,15 @@ class Talker:
         if reply != text:  # the line should be echoed, so the result should match
             raise ValueError('expected %s got %s' % (text, reply))
 
+        return None
+
     def receive(self) -> str:
         line = self.serial.read_until(self.TERMINATOR)
-        return line.decode('UTF8').strip()
+        decoded_line = line.decode("UTF8").strip()
 
-    def close(self):
+        return decoded_line
+
+    def close(self) -> None:
         self.serial.close()
+
+        return None
