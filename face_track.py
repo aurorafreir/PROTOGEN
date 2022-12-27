@@ -70,15 +70,16 @@ mp_face_mesh = mp.solutions.face_mesh
 
 def timeit(method):
     def timed(*args, **kw):
-        ts = time.time()
+        time_start = time.time()
         result = method(*args, **kw)
-        te = time.time()
+        time_end = time.time()
 
         if 'log_time' in kw:
             name = kw.get('log_name', method.__name__.upper())
-            kw['log_time'][name] = int((te - ts) * 1000)
+            kw['log_time'][name] = int((time_end - time_start) * 1000)
         else:
-            print('%r  %2.2f ms' % (method.__name__, (te - ts) * 1000))  # ew, need to rewrite this print
+            method_time = (time_end - time_start) * 1000
+            print(method.__name__, f"{method_time:.2f}")
         return result
 
     return timed
