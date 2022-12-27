@@ -8,7 +8,6 @@ This is a script to handle reading a webcam, running MediaPipe FaceMesh, and doi
 import cv2
 import mediapipe as mp
 from mediapipe.python.solutions.drawing_utils import _normalized_to_pixel_coordinates as denormalize_coordinates
-import time
 import math
 import numpy
 import serial
@@ -113,7 +112,7 @@ MOUTH_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 11}
 MOUTH_WIDE_REMAP_KWARGS = {"old_min": 33, "old_max": 75}
 
 
-# @decs.timeit
+@decs.timeit
 def pose_handler(lm: dict, frame_width: int, frame_height: int) -> dict:
 
     def distance_with_normalize(xyz_a, xyz_b, norm_a, norm_b):
