@@ -17,6 +17,7 @@ import serial
 
 # LOCAL APPLICATION IMPORTS
 from . import talker
+from . import decs
 
 RIGHT_IRIS_INNER = 476
 RIGHT_IRIS_OUTER = 474
@@ -68,23 +69,6 @@ mp_drawing_styles = mp.solutions.drawing_styles
 mp_face_mesh = mp.solutions.face_mesh
 
 
-def timeit(method):
-    def timed(*args, **kw):
-        time_start = time.time()
-        result = method(*args, **kw)
-        time_end = time.time()
-
-        if 'log_time' in kw:
-            name = kw.get('log_name', method.__name__.upper())
-            kw['log_time'][name] = int((time_end - time_start) * 1000)
-        else:
-            method_time = (time_end - time_start) * 1000
-            print(method.__name__, f"{method_time:.2f}")
-        return result
-
-    return timed
-
-
 def distance(xy1, xy2) -> float:
     dist = sum([(x - y) ** 2 for x, y in zip(xy1, xy2)]) ** 0.5
     return dist
@@ -129,7 +113,7 @@ MOUTH_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 11}
 MOUTH_WIDE_REMAP_KWARGS = {"old_min": 33, "old_max": 75}
 
 
-# @timeit
+# @decs.timeit
 def pose_handler(lm: dict, frame_width: int, frame_height: int) -> dict:
 
     def distance_with_normalize(xyz_a, xyz_b, norm_a, norm_b):
