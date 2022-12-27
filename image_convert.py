@@ -1,6 +1,7 @@
 """
 Trans Rights are Human Rights
 
+Small script to convert an RGB image to a 2 axis RGBA array
 """
 # SYSTEM IMPORTS
 from PIL import Image
@@ -11,10 +12,11 @@ import pathlib
 # LOCAL APPLICATION IMPORTS
 
 
-def get_pixels(image_name):
+def get_pixels(image_name) -> list:
     img = Image.open(image_name, 'r')
     w, h = img.size
     pix = list(img.getdata())
+
     return [pix[n:n+w] for n in range(0, w*h, w)]
 
 
