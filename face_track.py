@@ -266,8 +266,8 @@ with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
                 else:
                     talker_inst.send('show_image(shape="eye_blink")')
 
-            img = numpy.zeros((image_height, image_width, 3), numpy.uint8)
             if show_image:
+                img = numpy.zeros((image_height, image_width, 3), numpy.uint8)
                 for face_landmarks in results.multi_face_landmarks:
                     mp_drawing.draw_landmarks(
                         image=img,
