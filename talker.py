@@ -23,7 +23,7 @@ class Talker:
         reply = self.receive()
         reply = reply.replace('>>> ', '')  # lines after first will be prefixed by a prompt
         if reply != text:  # the line should be echoed, so the result should match
-            raise ValueError('expected %s got %s' % (text, reply))
+            raise ValueError(f"expected {text} got {reply}")
 
         return None
 
