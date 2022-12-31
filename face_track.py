@@ -6,15 +6,14 @@ This is a script to handle reading a webcam, running MediaPipe FaceMesh, and doi
 """
 # SYSTEM IMPORTS
 import time
-import cv2
-import mediapipe as mp
-import numpy
 
 # STANDARD LIBRARY IMPORTS
+import cv2
+import mediapipe as mp
+import serial.serialutil
+import numpy
 
 # LOCAL APPLICATION IMPORTS
-import serial.serialutil
-
 import talker
 from proto_math import get_eye_ear_equation, remap_value, clamp_float, distance_with_normalize
 
