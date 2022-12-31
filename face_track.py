@@ -13,6 +13,8 @@ import numpy
 # STANDARD LIBRARY IMPORTS
 
 # LOCAL APPLICATION IMPORTS
+import serial.serialutil
+
 import talker
 from proto_math import get_eye_ear_equation, remap_value, clamp_float, distance_with_normalize
 
@@ -58,7 +60,7 @@ use_talker = True
 talker_inst = None
 try:
     talker_inst = talker.Talker()
-except:
+except serial.serialutil.SerialException:
     use_talker = False
 
 mp_drawing = mp.solutions.drawing_utils
@@ -275,7 +277,8 @@ def run_face_tracking():
                 pose_dict = pose_handler(landmarks, frame_width=image_width, frame_height=image_height)
 
                 # Head direction estimation
-                # p1, p2 = face_direction_estimation(lm=results.multi_face_landmarks, frame_width=image_width, frame_height=image_height)
+                # p1, p2 = face_direction_estimation(lm=results.multi_face_landmarks,
+                #                                    frame_width=image_width, frame_height=image_height)
                 # cv2.line(image, p1, p2, (255, 0, 0), 3)
 
                 # This should only be run if a COM device is attached and Talker can be run
