@@ -5,6 +5,7 @@ This is a script to handle reading a webcam, running MediaPipe FaceMesh, and doi
     on that returned FaceMesh data.
 """
 # SYSTEM IMPORTS
+import time
 import cv2
 import mediapipe as mp
 from mediapipe.python.solutions.drawing_utils import _normalized_to_pixel_coordinates as denormalize_coordinates
@@ -15,8 +16,8 @@ import serial
 # STANDARD LIBRARY IMPORTS
 
 # LOCAL APPLICATION IMPORTS
-from . import talker
-from . import decs
+import talker
+import decs
 
 RIGHT_IRIS_INNER = 476
 RIGHT_IRIS_OUTER = 474
@@ -60,7 +61,7 @@ use_talker = True
 talker_inst = None
 try:
     talker_inst = talker.Talker()
-except serial.SerialException:
+except:
     use_talker = False
 
 mp_drawing = mp.solutions.drawing_utils
@@ -112,7 +113,7 @@ MOUTH_OPEN_REMAP_KWARGS = {"old_min": 0, "old_max": 11}
 MOUTH_WIDE_REMAP_KWARGS = {"old_min": 33, "old_max": 75}
 
 
-@decs.timeit
+# @decs.timeit
 def pose_handler(lm: dict, frame_width: int, frame_height: int) -> dict:
 
     def distance_with_normalize(xyz_a, xyz_b, norm_a, norm_b):
@@ -122,12 +123,12 @@ def pose_handler(lm: dict, frame_width: int, frame_height: int) -> dict:
         return open_normalized
 
     left_eye_open_amount_mapped = clamp_float(remap_value(
-        get_eye_ear_equation(landmarks, LEFT_EYE_IDXS, frame_width=frame_width, frame_height=frame_height),
+        get_eye_ear_equation(lm, LEFT_EYE_IDXS, frame_width=frame_width, frame_height=frame_height),
         **EYE_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
      ), **ZERO_ONE_CLAMP)
 
     right_eye_open_amount_mapped = clamp_float(remap_value(
-        get_eye_ear_equation(landmarks, RIGHT_EYE_IDXS, frame_width=frame_width, frame_height=frame_height),
+        get_eye_ear_equation(lm, RIGHT_EYE_IDXS, frame_width=frame_width, frame_height=frame_height),
         **EYE_OPEN_REMAP_KWARGS, **ZERO_ONE_REMAP_KWARGS
     ), **ZERO_ONE_CLAMP)
 
@@ -214,84 +215,152 @@ def pose_handler(lm: dict, frame_width: int, frame_height: int) -> dict:
     return return_data
 
 
-FACEMESH_KWARGS = {"max_num_faces": 1,
-                   "refine_landmarks": True,
-                   "min_detection_confidence": 0.5,
-                   "min_tracking_confidence": 0.5
-                   }
-show_image = True
-drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+def face_direction_estimation(lm: dict, frame_width: int, frame_height: int):
+    # TODO This needs fully rewriting to use my landmarks dict instead of results.multi_face_landmarks
+    face_2d = []
+    face_3d = []
+    for face_landmarks in lm:
+        for idx, lm in enumerate(face_landmarks.landmark):
+            if idx == 33 or idx == 263 or idx == 1 or idx == 61 or idx == 291 or idx == 199:
+                if idx == 1:
+                    nose_2d = (lm.x * frame_width, lm.y * frame_height)
+                    nose_3d = (lm.x * frame_width, lm.y * frame_height, lm.z * 3000)
 
-if not cap.isOpened():
-    raise Exception("Unable to read camera feed!!")
+                x, y = int(lm.x * frame_width), int(lm.y * frame_height)
 
-with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
-    while cap.isOpened():
-        success, image = cap.read()
-        if not success:
-            print("Ignoring empty camera frame.")
-            # If loading a video, use 'break' instead of 'continue'.
-            continue
+                # Get the 2D Coordinates
+                face_2d.append([x, y])
 
-        # To improve performance, optionally mark the image as not writeable to
-        # pass by reference.
-        image.flags.writeable = False
-        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = face_mesh.process(image)
+                # Get the 3D Coordinates
+                face_3d.append([x, y, lm.z])
 
-        # Draw the face mesh annotations on the image.
-        image.flags.writeable = False
-        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
-        image_height, image_width, _ = image.shape
+        # Convert it to the NumPy array
+        face_2d = numpy.array(face_2d, dtype=numpy.float64)
 
-        if results.multi_face_landmarks:
-            landmarks = {}
-            for index, face_landmarks in enumerate(results.multi_face_landmarks[0].landmark):
-                x_coordinate = face_landmarks.x
-                y_coordinate = face_landmarks.y
-                z_coordinate = face_landmarks.z
-                current_landmarks = [x_coordinate, y_coordinate, z_coordinate]
-                landmarks[index] = current_landmarks
+        # Convert it to the NumPy array
+        face_3d = numpy.array(face_3d, dtype=numpy.float64)
 
-            # Pass the modified landmarks dict into the posehandler, return the facial poses
-            pose_dict = pose_handler(landmarks, frame_width=image_width, frame_height=image_height)
+        # The camera matrix
+        focal_length = 1 * frame_width
 
-            # This should only be run if a COM device is attached and Talker can be run
-            if use_talker:
-                if pose_dict["eye_left"]["open_amount"] > .5:
-                    talker_inst.send('show_image(shape="eye_static")')
-                else:
-                    talker_inst.send('show_image(shape="eye_blink")')
+        cam_matrix = numpy.array([[focal_length, 0, frame_height / 2],
+                               [0, focal_length, frame_width / 2],
+                               [0, 0, 1]])
+
+        # The distortion parameters
+        dist_matrix = numpy.zeros((4, 1), dtype=numpy.float64)
+
+        # Solve PnP
+        success, rot_vec, trans_vec = cv2.solvePnP(face_3d, face_2d, cam_matrix, dist_matrix)
+
+        # Get rotational matrix
+        rmat, jac = cv2.Rodrigues(rot_vec)
+
+        # Get angles
+        angles, mtxR, mtxQ, Qx, Qy, Qz = cv2.RQDecomp3x3(rmat)
+
+        # Get the y rotation degree
+        x = angles[0] * 360
+        y = angles[1] * 360
+        z = angles[2] * 360
+
+        nose_3d_projection, jacobian = cv2.projectPoints(nose_3d, rot_vec, trans_vec, cam_matrix, dist_matrix)
+
+        p1 = (int(nose_2d[0]), int(nose_2d[1]))
+        p2 = (int(nose_2d[0] + y * 10), int(nose_2d[1] - x * 10))
+
+        return p1, p2
+
+
+def run_face_tracking():
+    FACEMESH_KWARGS = {"max_num_faces": 1,
+                       "refine_landmarks": True,
+                       "min_detection_confidence": 0.5,
+                       "min_tracking_confidence": 0.5
+                       }
+    show_image = True
+    drawing_spec = mp_drawing.DrawingSpec(thickness=1, circle_radius=1)
+    cap = cv2.VideoCapture(0)
+    # cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640/2)
+    # cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480/2)
+    if not cap.isOpened():
+        raise Exception("Unable to read camera feed!!")
+    with mp_face_mesh.FaceMesh(**FACEMESH_KWARGS) as face_mesh:
+        while cap.isOpened():
+            start_time = time.time()
+            success, image = cap.read()
+            if not success:
+                print("Ignoring empty camera frame.")
+                # If loading a video, use 'break' instead of 'continue'.
+                continue
+
+            # To improve performance, optionally mark the image as not writeable to
+            # pass by reference.
+            image.flags.writeable = False
+            image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+            results = face_mesh.process(image)
+
+            # Draw the face mesh annotations on the image.
+            image.flags.writeable = False
+            image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+            image_height, image_width, _ = image.shape
+
+            if results.multi_face_landmarks:
+                landmarks = {}
+                for index, face_landmarks in enumerate(results.multi_face_landmarks[0].landmark):
+                    x_coordinate = face_landmarks.x
+                    y_coordinate = face_landmarks.y
+                    z_coordinate = face_landmarks.z
+                    current_landmarks = [x_coordinate, y_coordinate, z_coordinate]
+                    landmarks[index] = current_landmarks
+
+                # Pass the modified landmarks dict into the posehandler, return the facial poses
+                pose_dict = pose_handler(landmarks, frame_width=image_width, frame_height=image_height)
+
+                # Head direction estimation
+                # p1, p2 = face_direction_estimation(lm=results.multi_face_landmarks, frame_width=image_width, frame_height=image_height)
+                # cv2.line(image, p1, p2, (255, 0, 0), 3)
+
+                # This should only be run if a COM device is attached and Talker can be run
+                if use_talker:
+                    if pose_dict["eye_left"]["open_amount"] > .5:
+                        talker_inst.send('show_image(shape="eye_static")')
+                    else:
+                        talker_inst.send('show_image(shape="eye_blink")')
+
+                if show_image:
+                    img = numpy.zeros((image_height, image_width, 3), numpy.uint8)
+                    for face_landmarks in results.multi_face_landmarks:
+                        mp_drawing.draw_landmarks(
+                            image=image,
+                            landmark_list=face_landmarks,
+                            connections=mp_face_mesh.FACEMESH_TESSELATION,
+                            landmark_drawing_spec=None,
+                            connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
+                        mp_drawing.draw_landmarks(
+                            image=image,
+                            landmark_list=face_landmarks,
+                            connections=mp_face_mesh.FACEMESH_CONTOURS,
+                            landmark_drawing_spec=None,
+                            connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style())
+                        mp_drawing.draw_landmarks(
+                            image=image,
+                            landmark_list=face_landmarks,
+                            connections=mp_face_mesh.FACEMESH_IRISES,
+                            landmark_drawing_spec=None,
+                            connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
 
             if show_image:
-                img = numpy.zeros((image_height, image_width, 3), numpy.uint8)
-                for face_landmarks in results.multi_face_landmarks:
-                    mp_drawing.draw_landmarks(
-                        image=img,
-                        landmark_list=face_landmarks,
-                        connections=mp_face_mesh.FACEMESH_TESSELATION,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_tesselation_style())
-                    mp_drawing.draw_landmarks(
-                        image=img,
-                        landmark_list=face_landmarks,
-                        connections=mp_face_mesh.FACEMESH_CONTOURS,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_contours_style())
-                    mp_drawing.draw_landmarks(
-                        image=img,
-                        landmark_list=face_landmarks,
-                        connections=mp_face_mesh.FACEMESH_IRISES,
-                        landmark_drawing_spec=None,
-                        connection_drawing_spec=mp_drawing_styles.get_default_face_mesh_iris_connections_style())
+                end_time = time.time()
+                fps = 1 / (end_time - start_time)
+                cv2.putText(image, f'FPS: {int(fps)}', (50, 50), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 2)
 
-        # Flip the image horizontally for a selfie-view display.
-        if show_image:
-            cv2.imshow('MediaPipe Face Mesh', cv2.flip(image, 1))
-            if cv2.waitKey(5) & 0xFF == 27:
-                break
+                cv2.imshow('MediaPipe Face Mesh', image)
 
-cap.release()
+                if cv2.waitKey(5) & 0xFF == 27:
+                    break
+
+    cap.release()
+
+if __name__ == "__main__":
+    run_face_tracking()
