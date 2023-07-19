@@ -28,26 +28,3 @@ git clone https://github.com/CatAndDogSoup/PROTOGEN.git
 cd PROTOGEN
 python face_track.py
 ```
-
-# Installing RPI4
-```
-sudo apt-get install cmake python3-dev python3-setuptoolslibtiff5-dev libjpeg-dev libopenjp2-7-dev zlib1g-dev libfreetype6-dev liblcms2-dev libwebp-dev tcl8.6-dev tk8.6-dev python3-tk libharfbuzz-dev libfribidi-dev libxcb1-dev
-
-curl https://pyenv.run | bash
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.bashrc
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.bashrc
-echo 'eval "$(pyenv init -)"' >> ~/.bashrc
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ~/.profile
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ~/.profile
-echo 'eval "$(pyenv init -)"' >> ~/.profile
-
-exec "$SHELL"
-
-pyenv install 3.8
-pyenv global 3.8
-
-python3.8 -m pip install --upgrade pip
-python3.8 -m pip install --upgrade setuptools wheel
-python3.8 -m pip install opencv-python
-python3.8 -m pip install mediapipe-rpi4
-```
